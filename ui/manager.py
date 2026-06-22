@@ -1,8 +1,8 @@
 """
-FileNote 主窗口管理器 v2.0
+FileNote 主窗口管理器 v2.1
 - 左侧：导航栏（带图标、高亮选中）
 - 中间：卡片式备注列表（搜索/筛选）
-- 右侧：详情面板（Markdown 编辑）
+- 右侧：详情面板（Markdown 编辑/预览）
 """
 
 import os
@@ -11,32 +11,43 @@ import customtkinter as ctk
 from tkinter import messagebox, Menu
 from loguru import logger
 from data.store import connect, _now
+import markdown
 
 # ============================================================
-# 视觉常量
+# 视觉常量 - 现代化配色
 # ============================================================
-FONT_TITLE = ("Microsoft YaHei UI", 20, "bold")
-FONT_SUBTITLE = ("Microsoft YaHei UI", 14, "bold")
-FONT_NORMAL = ("Microsoft YaHei UI", 13)
-FONT_SMALL = ("Microsoft YaHei UI", 11)
-FONT_MONO = ("Consolas", 12)
-FONT_ICON = ("Segoe UI Emoji", 14)
+# 字体
+FONT_TITLE = ("微软雅黑", 22, "bold")
+FONT_SUBTITLE = ("微软雅黑", 15, "bold")
+FONT_NORMAL = ("微软雅黑", 13)
+FONT_SMALL = ("微软雅黑", 11)
+FONT_MONO = ("Cascadia Code", 12)  # 更现代的等宽字体
+FONT_ICON = ("Segoe UI Emoji", 16)
 
-# 配色方案
-COLOR_ACCENT = "#3B82F6"
-COLOR_ACCENT_HOVER = "#2563EB"
-COLOR_SUCCESS = "#10B981"
+# 主色调 - 渐变蓝紫系
+COLOR_PRIMARY = "#6366F1"       # 靛蓝
+COLOR_PRIMARY_HOVER = "#4F46E5"
+COLOR_PRIMARY_LIGHT = "#EEF2FF"  # 浅色背景
+
+# 功能色
+COLOR_SUCCESS = "#10B981"       # 翠绿
 COLOR_SUCCESS_HOVER = "#059669"
-COLOR_WARN = "#EF4444"
-COLOR_WARN_HOVER = "#DC2626"
-COLOR_GOLD = "#F59E0B"
-COLOR_PURPLE = "#8B5CF6"
+COLOR_WARN = "#F59E0B"          # 琥珀
+COLOR_WARN_HOVER = "#D97706"
+COLOR_DANGER = "#EF4444"        # 红色
+COLOR_DANGER_HOVER = "#DC2626"
+COLOR_INFO = "#3B82F6"          # 蓝色
 
-# 卡片悬停色
-CARD_HOVER_LIGHT = "#F3F4F6"
-CARD_HOVER_DARK = "#374151"
-CARD_SELECTED_LIGHT = "#DBEAFE"
-CARD_SELECTED_DARK = "#1E3A5F"
+# 中性色
+COLOR_TEXT_PRIMARY = ("gray15", "gray90")
+COLOR_TEXT_SECONDARY = ("gray40", "gray60")
+COLOR_TEXT_MUTED = ("gray55", "gray50")
+COLOR_BORDER = ("gray80", "gray30")
+COLOR_BG_CARD = ("white", "gray20")
+COLOR_BG_CARD_HOVER = ("#F8FAFC", "gray25")
+COLOR_BG_SELECTED = ("#EEF2FF", "#1E1B4B")
+COLOR_BG_SIDEBAR = ("#F1F5F9", "gray15")
+COLOR_BG_MAIN = ("#F8FAFC", "gray13")
 
 
 # ============================================================
@@ -103,25 +114,24 @@ def toggle_fav(note_id: int):
 # Toast 通知
 # ============================================================
 class Toast(ctk.CTkToplevel):
-    """轻量级 Toast 通知"""
     def __init__(self, master, message: str, msg_type: str = "info", duration: int = 2000):
         super().__init__(master)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
 
         colors = {
-            "info": (COLOR_ACCENT, "#FFFFFF"),
+            "info": (COLOR_INFO, "#FFFFFF"),
             "success": (COLOR_SUCCESS, "#FFFFFF"),
             "warning": (COLOR_WARN, "#FFFFFF"),
+            "error": (COLOR_DANGER, "#FFFFFF"),
         }
         bg, fg = colors.get(msg_type, colors["info"])
 
-        frame = ctk.CTkFrame(self, fg_color=bg, corner_radius=10)
+        frame = ctk.CTkFrame(self, fg_color=bg, corner_radius=12)
         frame.pack(fill="both", expand=True, padx=2, pady=2)
 
-        ctk.CTkLabel(frame, text=message, font=FONT_NORMAL, text_color=fg).pack(padx=16, pady=10)
+        ctk.CTkLabel(frame, text=f"  {message}  ", font=FONT_NORMAL, text_color=fg).pack(padx=16, pady=10)
 
-        # 居中显示
         self.update_idletasks()
         w = self.winfo_reqwidth()
         h = self.winfo_reqheight()
@@ -145,7 +155,7 @@ NAV_ITEMS = [
 
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, on_nav_change):
-        super().__init__(master, width=220, corner_radius=0)
+        super().__init__(master, width=240, corner_radius=0, fg_color=COLOR_BG_SIDEBAR)
         self.on_nav_change = on_nav_change
         self._current = ""
         self._nav_buttons: dict[str, ctk.CTkButton] = {}
@@ -154,39 +164,39 @@ class Sidebar(ctk.CTkFrame):
     def _build(self):
         # Logo 区域
         logo_frame = ctk.CTkFrame(self, fg_color="transparent")
-        logo_frame.pack(fill="x", padx=16, pady=(20, 16))
-        ctk.CTkLabel(logo_frame, text="📂", font=("Segoe UI Emoji", 28)).pack(side="left", padx=(0, 8))
-        ctk.CTkLabel(logo_frame, text="FileNote", font=FONT_TITLE, anchor="w").pack(side="left")
+        logo_frame.pack(fill="x", padx=20, pady=(24, 16))
+        ctk.CTkLabel(logo_frame, text="📂", font=("Segoe UI Emoji", 32)).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(logo_frame, text="FileNote", font=FONT_TITLE, text_color=COLOR_PRIMARY).pack(side="left")
 
         # 分隔线
-        ctk.CTkFrame(self, height=1, fg_color=("gray80", "gray30")).pack(fill="x", padx=16, pady=(0, 12))
+        ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(0, 16))
 
         # 导航标题
-        ctk.CTkLabel(self, text="导航", font=FONT_SMALL, text_color="gray60", anchor="w").pack(fill="x", padx=20, pady=(4, 6))
+        ctk.CTkLabel(self, text="导航", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED, anchor="w").pack(fill="x", padx=24, pady=(4, 8))
 
         # 导航按钮
         for name, icon in NAV_ITEMS:
             btn = ctk.CTkButton(
-                self, text=f"  {icon}  {name}", anchor="w", font=FONT_NORMAL, height=40,
-                fg_color="transparent", text_color=("gray20", "gray80"),
+                self, text=f"  {icon}  {name}", anchor="w", font=FONT_NORMAL, height=44,
+                fg_color="transparent", text_color=COLOR_TEXT_PRIMARY,
                 hover_color=("gray85", "gray25"),
-                corner_radius=8, command=lambda n=name: self._select_nav(n),
+                corner_radius=10, command=lambda n=name: self._select_nav(n),
             )
-            btn.pack(fill="x", padx=12, pady=2)
+            btn.pack(fill="x", padx=14, pady=3)
             self._nav_buttons[name] = btn
 
         # 分隔线
-        ctk.CTkFrame(self, height=1, fg_color=("gray80", "gray30")).pack(fill="x", padx=16, pady=(12, 8))
+        ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(16, 12))
 
         # 标签标题
-        ctk.CTkLabel(self, text="标签", font=FONT_SMALL, text_color="gray60", anchor="w").pack(fill="x", padx=20, pady=(4, 6))
+        ctk.CTkLabel(self, text="标签", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED, anchor="w").pack(fill="x", padx=24, pady=(4, 8))
 
         # 标签列表
         self._tag_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self._tag_frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self._tag_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         # 版本信息
-        ctk.CTkLabel(self, text="v2.0", font=FONT_SMALL, text_color="gray70").pack(side="bottom", pady=8)
+        ctk.CTkLabel(self, text="v2.1", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED).pack(side="bottom", pady=12)
 
         self._select_nav("全部")
 
@@ -194,9 +204,9 @@ class Sidebar(ctk.CTkFrame):
         self._current = name
         for k, btn in self._nav_buttons.items():
             if k == name:
-                btn.configure(fg_color=COLOR_ACCENT, text_color="white")
+                btn.configure(fg_color=COLOR_PRIMARY, text_color="white")
             else:
-                btn.configure(fg_color="transparent", text_color=("gray20", "gray80"))
+                btn.configure(fg_color="transparent", text_color=COLOR_TEXT_PRIMARY)
         self.on_nav_change(name)
 
     def refresh_tags(self, tags: list[str]):
@@ -204,45 +214,45 @@ class Sidebar(ctk.CTkFrame):
             w.destroy()
         if not tags:
             ctk.CTkLabel(self._tag_frame, text="暂无标签", font=FONT_SMALL,
-                         text_color="gray70").pack(pady=8)
+                         text_color=COLOR_TEXT_MUTED).pack(pady=8)
             return
         for tag in tags:
             btn = ctk.CTkButton(
-                self._tag_frame, text=f"  🏷️  {tag}", anchor="w", font=FONT_SMALL, height=32,
-                fg_color="transparent", text_color=("gray20", "gray80"),
-                hover_color=("gray85", "gray25"), corner_radius=6,
+                self._tag_frame, text=f"  🏷️  {tag}", anchor="w", font=FONT_SMALL, height=34,
+                fg_color="transparent", text_color=COLOR_TEXT_PRIMARY,
+                hover_color=("gray85", "gray25"), corner_radius=8,
                 command=lambda t=tag: self.on_nav_change(f"tag:{t}"),
             )
-            btn.pack(fill="x", padx=4, pady=1)
+            btn.pack(fill="x", padx=4, pady=2)
 
 
 # ============================================================
 # 备注卡片
 # ============================================================
 class NoteCard(ctk.CTkFrame):
-    """单条备注卡片"""
     def __init__(self, master, item: dict, on_select, on_context_menu, is_selected: bool = False):
         self._item = item
         self._on_select = on_select
         self._on_context_menu = on_context_menu
         self._is_selected = is_selected
 
-        super().__init__(master, corner_radius=10, fg_color=self._get_bg_color(), cursor="hand2")
+        super().__init__(master, corner_radius=12, fg_color=self._get_bg_color(), cursor="hand2",
+                         border_width=1, border_color=COLOR_BORDER if is_selected else "transparent")
 
         self._build()
         self._bind_hover()
 
     def _get_bg_color(self):
         if self._is_selected:
-            return (CARD_SELECTED_LIGHT, CARD_SELECTED_DARK)
-        return ("gray92", "gray17")
+            return COLOR_BG_SELECTED
+        return COLOR_BG_CARD
 
     def _build(self):
         item = self._item
 
         # 顶部：图标 + 文件名 + 状态标签
         top = ctk.CTkFrame(self, fg_color="transparent")
-        top.pack(fill="x", padx=12, pady=(10, 2))
+        top.pack(fill="x", padx=14, pady=(12, 4))
 
         # 文件类型图标
         if os.path.isdir(item["path"]):
@@ -252,67 +262,81 @@ class NoteCard(ctk.CTkFrame):
             icon_map = {
                 ".py": "🐍", ".js": "📜", ".ts": "📘", ".html": "🌐", ".css": "🎨",
                 ".md": "📝", ".txt": "📄", ".json": "📋", ".xml": "📰",
-                ".jpg": "🖼️", ".png": "🖼️", ".gif": "🖼️",
-                ".pdf": "📕", ".doc": "📘", ".xls": "📊", ".ppt": "📙",
+                ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".gif": "🖼️", ".svg": "🖼️",
+                ".pdf": "📕", ".doc": "📘", ".docx": "📘", ".xls": "📊", ".xlsx": "📊",
+                ".ppt": "📙", ".pptx": "📙",
                 ".zip": "📦", ".rar": "📦", ".7z": "📦",
-                ".exe": "⚙️", ".bat": "⚙️", ".sh": "⚙️",
-                ".mp3": "🎵", ".mp4": "🎬", ".wav": "🎵",
+                ".exe": "⚙️", ".bat": "⚙️", ".sh": "⚙️", ".cmd": "⚙️",
+                ".mp3": "🎵", ".mp4": "🎬", ".wav": "🎵", ".avi": "🎬",
+                ".c": "🔧", ".cpp": "🔧", ".h": "🔧", ".java": "☕", ".go": "🔵",
+                ".rs": "🦀", ".swift": "🍎", ".kt": "🟣",
             }
             icon = icon_map.get(ext, "📄")
 
-        ctk.CTkLabel(top, text=icon, font=FONT_ICON, width=28).pack(side="left")
+        ctk.CTkLabel(top, text=icon, font=FONT_ICON, width=30).pack(side="left")
 
         name = os.path.basename(item["path"]) or item["path"]
         ctk.CTkLabel(top, text=name, font=FONT_SUBTITLE, anchor="w",
-                      wraplength=220).pack(side="left", padx=(4, 0), fill="x", expand=True)
+                      text_color=COLOR_TEXT_PRIMARY, wraplength=220).pack(side="left", padx=(6, 0), fill="x", expand=True)
 
         # 状态标签
         if item["pinned"]:
-            pin_label = ctk.CTkLabel(top, text="📌", font=("Segoe UI Emoji", 12), width=24)
-            pin_label.pack(side="right", padx=2)
+            ctk.CTkLabel(top, text="📌", font=("Segoe UI Emoji", 13), width=26).pack(side="right", padx=2)
         if item["favorite"]:
-            fav_label = ctk.CTkLabel(top, text="⭐", font=("Segoe UI Emoji", 12), width=24)
-            fav_label.pack(side="right", padx=2)
+            ctk.CTkLabel(top, text="⭐", font=("Segoe UI Emoji", 13), width=26).pack(side="right", padx=2)
 
-        # 路径
-        ctk.CTkLabel(self, text=item["path"], font=FONT_SMALL, text_color="gray50",
-                      anchor="w", wraplength=280).pack(fill="x", padx=12, pady=(0, 4))
+        # 路径（可点击）
+        path_label = ctk.CTkLabel(self, text=item["path"], font=FONT_SMALL, text_color=COLOR_INFO,
+                                   anchor="w", wraplength=280, cursor="hand2")
+        path_label.pack(fill="x", padx=14, pady=(0, 6))
+        path_label.bind("<Button-1>", lambda e: self._open_path(item["path"]))
 
         # 预览内容
-        preview = item["note"][:100].replace("\n", " ")
-        if len(item["note"]) > 100:
+        preview = item["note"][:120].replace("\n", " ")
+        if len(item["note"]) > 120:
             preview += "..."
         if preview:
-            ctk.CTkLabel(self, text=preview, font=FONT_SMALL, text_color=("gray40", "gray60"),
-                          anchor="w", wraplength=280, justify="left").pack(fill="x", padx=12, pady=(0, 4))
+            ctk.CTkLabel(self, text=preview, font=FONT_SMALL, text_color=COLOR_TEXT_SECONDARY,
+                          anchor="w", wraplength=280, justify="left").pack(fill="x", padx=14, pady=(0, 6))
 
         # 底部时间
         ctk.CTkLabel(self, text=f"更新于 {item['updated_at'][:16]}", font=FONT_SMALL,
-                      text_color="gray60", anchor="e").pack(fill="x", padx=12, pady=(0, 8))
+                      text_color=COLOR_TEXT_MUTED, anchor="e").pack(fill="x", padx=14, pady=(0, 10))
+
+    def _open_path(self, path: str):
+        """打开文件或文件夹"""
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                os.startfile(path)
+            else:
+                os.startfile(os.path.dirname(path))
+        else:
+            Toast(self.winfo_toplevel(), "路径不存在", "warning")
 
     def _bind_hover(self):
         def on_enter(e):
             if not self._is_selected:
-                self.configure(fg_color=(CARD_HOVER_LIGHT, CARD_HOVER_DARK))
+                self.configure(fg_color=COLOR_BG_CARD_HOVER)
         def on_leave(e):
             if not self._is_selected:
-                self.configure(fg_color=("gray92", "gray17"))
+                self.configure(fg_color=COLOR_BG_CARD)
 
         self.bind("<Enter>", on_enter)
         self.bind("<Leave>", on_leave)
         self.bind("<Button-1>", lambda e: self._on_select(self._item))
         self.bind("<Button-3>", lambda e: self._on_context_menu(e, self._item))
 
-        # 递归绑定到所有子组件
         for child in self.winfo_children():
             child.bind("<Enter>", on_enter)
             child.bind("<Leave>", on_leave)
-            child.bind("<Button-1>", lambda e: self._on_select(self._item))
+            if not isinstance(child, ctk.CTkLabel) or child.cget("text_color") != COLOR_INFO:
+                child.bind("<Button-1>", lambda e: self._on_select(self._item))
             child.bind("<Button-3>", lambda e: self._on_context_menu(e, self._item))
             for grandchild in child.winfo_children():
                 grandchild.bind("<Enter>", on_enter)
                 grandchild.bind("<Leave>", on_leave)
-                grandchild.bind("<Button-1>", lambda e: self._on_select(self._item))
+                if not isinstance(grandchild, ctk.CTkLabel) or grandchild.cget("text_color") != COLOR_INFO:
+                    grandchild.bind("<Button-1>", lambda e: self._on_select(self._item))
                 grandchild.bind("<Button-3>", lambda e: self._on_context_menu(e, self._item))
 
 
@@ -321,7 +345,7 @@ class NoteCard(ctk.CTkFrame):
 # ============================================================
 class NoteList(ctk.CTkFrame):
     def __init__(self, master, on_select, on_search):
-        super().__init__(master, width=340)
+        super().__init__(master, width=360, fg_color=COLOR_BG_MAIN)
         self.on_select = on_select
         self._items: list[dict] = []
         self._selected_id: int | None = None
@@ -331,34 +355,34 @@ class NoteList(ctk.CTkFrame):
     def _build(self):
         # 搜索区域
         search_frame = ctk.CTkFrame(self, fg_color="transparent")
-        search_frame.pack(fill="x", padx=12, pady=(12, 8))
+        search_frame.pack(fill="x", padx=14, pady=(14, 10))
 
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", self._on_search_change)
         search_entry = ctk.CTkEntry(
             search_frame, placeholder_text="🔍 搜索路径或备注...",
-            textvariable=self._search_var, font=FONT_NORMAL, height=38
+            textvariable=self._search_var, font=FONT_NORMAL, height=40,
+            corner_radius=10, border_width=1
         )
         search_entry.pack(fill="x")
 
         # 新增按钮
         add_btn = ctk.CTkButton(
-            self, text="➕  新增备注", font=FONT_NORMAL, height=36,
-            fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
-            corner_radius=8, command=self._add_note_dialog
+            self, text="➕  新增备注", font=FONT_NORMAL, height=38,
+            fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+            corner_radius=10, command=self._add_note_dialog
         )
-        add_btn.pack(fill="x", padx=12, pady=(0, 8))
+        add_btn.pack(fill="x", padx=14, pady=(0, 10))
 
         # 列表区域
         self._list_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self._list_frame.pack(fill="both", expand=True, padx=4, pady=0)
+        self._list_frame.pack(fill="both", expand=True, padx=6, pady=0)
 
         # 底部统计
-        self._count_label = ctk.CTkLabel(self, text="", font=FONT_SMALL, text_color="gray60")
-        self._count_label.pack(fill="x", padx=12, pady=(4, 8))
+        self._count_label = ctk.CTkLabel(self, text="", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED)
+        self._count_label.pack(fill="x", padx=14, pady=(4, 10))
 
     def _on_search_change(self, *args):
-        # 防抖：300ms 后触发搜索
         if self._search_after_id:
             self.after_cancel(self._search_after_id)
         self._search_after_id = self.after(300, lambda: self.on_search(self._search_var.get().strip()))
@@ -366,19 +390,19 @@ class NoteList(ctk.CTkFrame):
     def _add_note_dialog(self):
         dialog = ctk.CTkToplevel(self)
         dialog.title("新增文件备注")
-        dialog.geometry("560x400")
+        dialog.geometry("580x420")
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="文件/文件夹路径：", font=FONT_NORMAL).pack(anchor="w", padx=20, pady=(16, 4))
+        ctk.CTkLabel(dialog, text="文件/文件夹路径：", font=FONT_NORMAL).pack(anchor="w", padx=20, pady=(18, 4))
         path_var = ctk.StringVar()
         path_entry = ctk.CTkEntry(dialog, textvariable=path_var, font=FONT_NORMAL,
-                                   placeholder_text="输入或粘贴路径...", height=36)
-        path_entry.pack(fill="x", padx=20, pady=(0, 8))
+                                   placeholder_text="输入或粘贴路径...", height=38, corner_radius=10)
+        path_entry.pack(fill="x", padx=20, pady=(0, 10))
 
         ctk.CTkLabel(dialog, text="备注内容（支持 Markdown）：", font=FONT_NORMAL).pack(anchor="w", padx=20, pady=(0, 4))
-        note_text = ctk.CTkTextbox(dialog, font=FONT_MONO, wrap="word")
-        note_text.pack(fill="both", expand=True, padx=20, pady=(0, 12))
+        note_text = ctk.CTkTextbox(dialog, font=FONT_MONO, wrap="word", corner_radius=10)
+        note_text.pack(fill="both", expand=True, padx=20, pady=(0, 14))
 
         def save():
             path = path_var.get().strip()
@@ -393,14 +417,14 @@ class NoteList(ctk.CTkFrame):
                 Toast(self.winfo_toplevel(), "备注已保存", "success")
             except Exception:
                 logger.exception("保存备注失败")
-                Toast(dialog, "保存失败", "warning")
+                Toast(dialog, "保存失败", "error")
 
         btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=20, pady=(0, 16))
+        btn_frame.pack(fill="x", padx=20, pady=(0, 18))
         ctk.CTkButton(btn_frame, text="保存", font=FONT_NORMAL, fg_color=COLOR_SUCCESS,
-                       hover_color=COLOR_SUCCESS_HOVER, width=100, command=save).pack(side="right", padx=4)
+                       hover_color=COLOR_SUCCESS_HOVER, width=100, corner_radius=10, command=save).pack(side="right", padx=4)
         ctk.CTkButton(btn_frame, text="取消", font=FONT_NORMAL, fg_color="gray",
-                       width=80, command=dialog.destroy).pack(side="right", padx=4)
+                       width=80, corner_radius=10, command=dialog.destroy).pack(side="right", padx=4)
 
     def load_items(self, items: list[dict]):
         self._items = items
@@ -410,10 +434,10 @@ class NoteList(ctk.CTkFrame):
         if not items:
             empty_frame = ctk.CTkFrame(self._list_frame, fg_color="transparent")
             empty_frame.pack(fill="both", expand=True, pady=60)
-            ctk.CTkLabel(empty_frame, text="📭", font=("Segoe UI Emoji", 48)).pack(pady=(0, 12))
-            ctk.CTkLabel(empty_frame, text="暂无备注", font=FONT_SUBTITLE, text_color="gray60").pack()
+            ctk.CTkLabel(empty_frame, text="📭", font=("Segoe UI Emoji", 56)).pack(pady=(0, 14))
+            ctk.CTkLabel(empty_frame, text="暂无备注", font=FONT_SUBTITLE, text_color=COLOR_TEXT_SECONDARY).pack()
             ctk.CTkLabel(empty_frame, text="点击上方按钮添加第一条备注", font=FONT_SMALL,
-                          text_color="gray70").pack(pady=(4, 0))
+                          text_color=COLOR_TEXT_MUTED).pack(pady=(6, 0))
             self._count_label.configure(text="共 0 条备注")
             return
 
@@ -421,23 +445,21 @@ class NoteList(ctk.CTkFrame):
             is_selected = (item["id"] == self._selected_id)
             card = NoteCard(self._list_frame, item, on_select=self._on_card_select,
                            on_context_menu=self._show_context_menu, is_selected=is_selected)
-            card.pack(fill="x", padx=8, pady=4)
+            card.pack(fill="x", padx=8, pady=5)
 
         self._count_label.configure(text=f"共 {len(items)} 条备注")
 
     def _on_card_select(self, item: dict):
         self._selected_id = item["id"]
         self.on_select(item)
-        # 刷新列表以更新选中状态
         self.load_items(self._items)
 
     def _show_context_menu(self, event, item: dict):
-        menu = Menu(self, tearoff=0)
-        menu.configure(font=FONT_SMALL)
-        pin_text = "取消置顶" if item["pinned"] else "置顶"
-        fav_text = "取消收藏" if item["favorite"] else "收藏"
-        menu.add_command(label=f"📌 {pin_text}", command=lambda: self._ctx_toggle_pin(item))
-        menu.add_command(label=f"⭐ {fav_text}", command=lambda: self._ctx_toggle_fav(item))
+        menu = Menu(self, tearoff=0, font=FONT_SMALL)
+        pin_text = "取消置顶" if item["pinned"] else "📌 置顶"
+        fav_text = "取消收藏" if item["favorite"] else "⭐ 收藏"
+        menu.add_command(label=pin_text, command=lambda: self._ctx_toggle_pin(item))
+        menu.add_command(label=fav_text, command=lambda: self._ctx_toggle_fav(item))
         menu.add_separator()
         menu.add_command(label="📋 复制路径", command=lambda: self._ctx_copy_path(item))
         menu.add_command(label="📂 打开所在文件夹", command=lambda: self._ctx_open_folder(item))
@@ -475,23 +497,24 @@ class NoteList(ctk.CTkFrame):
 
 
 # ============================================================
-# 右侧详情面板
+# 右侧详情面板 - 带 Markdown 预览
 # ============================================================
 class DetailPanel(ctk.CTkFrame):
     def __init__(self, master, on_refresh_list):
-        super().__init__(master)
+        super().__init__(master, fg_color=COLOR_BG_MAIN)
         self._current_item: dict | None = None
         self._on_refresh_list = on_refresh_list
+        self._preview_visible = False
         self._build()
 
     def _build(self):
         # 空状态
         self._empty_frame = ctk.CTkFrame(self, fg_color="transparent")
-        ctk.CTkLabel(self._empty_frame, text="📝", font=("Segoe UI Emoji", 64)).pack(pady=(80, 16))
+        ctk.CTkLabel(self._empty_frame, text="📝", font=("Segoe UI Emoji", 72)).pack(pady=(100, 20))
         ctk.CTkLabel(self._empty_frame, text="选择一条备注查看详情", font=FONT_SUBTITLE,
-                      text_color="gray60").pack()
+                      text_color=COLOR_TEXT_SECONDARY).pack()
         ctk.CTkLabel(self._empty_frame, text="或点击左侧「新增备注」创建", font=FONT_SMALL,
-                      text_color="gray70").pack(pady=(4, 0))
+                      text_color=COLOR_TEXT_MUTED).pack(pady=(6, 0))
         self._empty_frame.pack(expand=True, fill="both")
 
         # 详情区域
@@ -499,52 +522,178 @@ class DetailPanel(ctk.CTkFrame):
 
         # 操作栏
         action_bar = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
-        action_bar.pack(fill="x", padx=16, pady=(12, 8))
+        action_bar.pack(fill="x", padx=18, pady=(14, 10))
 
         self._save_btn = ctk.CTkButton(action_bar, text="💾 保存", width=80, font=FONT_SMALL,
                                         fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
-                                        command=self._save_note)
+                                        corner_radius=8, command=self._save_note)
         self._save_btn.pack(side="right", padx=4)
         self._del_btn = ctk.CTkButton(action_bar, text="🗑️ 删除", width=80, font=FONT_SMALL,
-                                       fg_color=COLOR_WARN, hover_color=COLOR_WARN_HOVER,
-                                       command=self._delete_note)
+                                       fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
+                                       corner_radius=8, command=self._delete_note)
         self._del_btn.pack(side="right", padx=4)
+        self._preview_btn = ctk.CTkButton(action_bar, text="👁️ 预览", width=80, font=FONT_SMALL,
+                                           fg_color=COLOR_INFO, hover_color="#2563EB",
+                                           corner_radius=8, command=self._toggle_preview)
+        self._preview_btn.pack(side="right", padx=4)
         self._fav_btn = ctk.CTkButton(action_bar, text="⭐ 收藏", width=80, font=FONT_SMALL,
-                                       fg_color=COLOR_GOLD, hover_color="#D97706",
-                                       command=self._toggle_fav)
+                                       fg_color=COLOR_WARN, hover_color=COLOR_WARN_HOVER,
+                                       corner_radius=8, command=self._toggle_fav)
         self._fav_btn.pack(side="left", padx=4)
         self._pin_btn = ctk.CTkButton(action_bar, text="📌 置顶", width=80, font=FONT_SMALL,
-                                       fg_color=COLOR_PURPLE, hover_color="#7C3AED",
-                                       command=self._toggle_pin)
+                                       fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+                                       corner_radius=8, command=self._toggle_pin)
         self._pin_btn.pack(side="left", padx=4)
 
         # 分隔线
-        ctk.CTkFrame(self._detail_frame, height=1, fg_color=("gray80", "gray30")).pack(fill="x", padx=16, pady=4)
+        ctk.CTkFrame(self._detail_frame, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=18, pady=6)
 
-        # 路径
+        # 路径（可点击）
         path_frame = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
-        path_frame.pack(fill="x", padx=16, pady=(4, 2))
-        ctk.CTkLabel(path_frame, text="📍 路径：", font=FONT_NORMAL, text_color="gray60").pack(side="left")
+        path_frame.pack(fill="x", padx=18, pady=(4, 2))
+        ctk.CTkLabel(path_frame, text="📍 路径：", font=FONT_NORMAL, text_color=COLOR_TEXT_MUTED).pack(side="left")
         self._path_label = ctk.CTkLabel(path_frame, text="", font=FONT_NORMAL,
-                                         text_color=COLOR_ACCENT, anchor="w")
+                                         text_color=COLOR_INFO, anchor="w", cursor="hand2")
         self._path_label.pack(side="left", fill="x", expand=True)
+        self._path_label.bind("<Button-1>", lambda e: self._open_current_path())
 
         # 时间
         self._time_label = ctk.CTkLabel(self._detail_frame, text="", font=FONT_SMALL,
-                                         text_color="gray60", anchor="w")
-        self._time_label.pack(fill="x", padx=20, pady=(0, 8))
+                                         text_color=COLOR_TEXT_MUTED, anchor="w")
+        self._time_label.pack(fill="x", padx=22, pady=(0, 10))
 
         # 分隔线
-        ctk.CTkFrame(self._detail_frame, height=1, fg_color=("gray80", "gray30")).pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkFrame(self._detail_frame, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=18, pady=(0, 10))
+
+        # 编辑器/预览切换区域
+        self._editor_frame = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
+        self._preview_frame = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
 
         # 编辑器
-        editor_label = ctk.CTkLabel(self._detail_frame, text="备注内容（Markdown）", font=FONT_SMALL,
-                                     text_color="gray60", anchor="w")
-        editor_label.pack(fill="x", padx=16, pady=(0, 4))
+        editor_label = ctk.CTkLabel(self._editor_frame, text="备注内容（Markdown）", font=FONT_SMALL,
+                                     text_color=COLOR_TEXT_MUTED, anchor="w")
+        editor_label.pack(fill="x", padx=2, pady=(0, 6))
 
-        self._editor = ctk.CTkTextbox(self._detail_frame, font=FONT_MONO, wrap="word",
-                                       corner_radius=8, border_width=1)
-        self._editor.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        self._editor = ctk.CTkTextbox(self._editor_frame, font=FONT_MONO, wrap="word",
+                                       corner_radius=10, border_width=1)
+        self._editor.pack(fill="both", expand=True)
+
+        # 预览区（使用 tkinterweb 渲染 HTML）
+        try:
+            from tkinterweb import HtmlFrame
+            self._html_frame = HtmlFrame(self._preview_frame, messages_enabled=False)
+            self._html_frame.pack(fill="both", expand=True)
+        except ImportError:
+            self._html_frame = None
+            ctk.CTkLabel(self._preview_frame, text="需要安装 tkinterweb：pip install tkinterweb",
+                          font=FONT_NORMAL, text_color=COLOR_TEXT_MUTED).pack(expand=True)
+
+    def _open_current_path(self):
+        if self._current_item:
+            path = self._current_item["path"]
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    os.startfile(path)
+                else:
+                    os.startfile(os.path.dirname(path))
+            else:
+                Toast(self.winfo_toplevel(), "路径不存在", "warning")
+
+    def _toggle_preview(self):
+        if not self._current_item:
+            return
+        self._preview_visible = not self._preview_visible
+
+        if self._preview_visible:
+            self._editor_frame.pack_forget()
+            self._preview_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+            self._preview_btn.configure(text="✏️ 编辑")
+            self._render_markdown()
+        else:
+            self._preview_frame.pack_forget()
+            self._editor_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+            self._preview_btn.configure(text="👁️ 预览")
+
+    def _render_markdown(self):
+        if not self._html_frame or not self._current_item:
+            return
+
+        md_text = self._editor.get("1.0", "end").strip()
+        if not md_text:
+            html_content = "<p style='color:gray;'>暂无内容</p>"
+        else:
+            html_content = markdown.markdown(md_text, extensions=['fenced_code', 'tables', 'nl2br'])
+
+        # 包装成完整 HTML，添加样式
+        full_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+        body {{
+            font-family: 'Microsoft YaHei UI', sans-serif;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #1f2937;
+            padding: 16px;
+            max-width: 100%;
+        }}
+        h1, h2, h3, h4, h5, h6 {{
+            color: #111827;
+            margin-top: 1.2em;
+            margin-bottom: 0.6em;
+        }}
+        h1 {{ font-size: 1.8em; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.3em; }}
+        h2 {{ font-size: 1.5em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.2em; }}
+        h3 {{ font-size: 1.3em; }}
+        p {{ margin: 0.8em 0; }}
+        code {{
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.9em;
+        }}
+        pre {{
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }}
+        pre code {{
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }}
+        blockquote {{
+            border-left: 4px solid #6366f1;
+            padding-left: 16px;
+            color: #6b7280;
+            margin: 1em 0;
+        }}
+        a {{ color: #3b82f6; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }}
+        th, td {{
+            border: 1px solid #e5e7eb;
+            padding: 8px 12px;
+            text-align: left;
+        }}
+        th {{ background: #f9fafb; font-weight: bold; }}
+        ul, ol {{ padding-left: 2em; }}
+        li {{ margin: 0.3em 0; }}
+        hr {{ border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }}
+        </style>
+        </head>
+        <body>{html_content}</body>
+        </html>
+        """
+        self._html_frame.load_html(full_html)
 
     def show_empty(self):
         self._detail_frame.pack_forget()
@@ -565,6 +714,13 @@ class DetailPanel(ctk.CTkFrame):
 
         self._pin_btn.configure(text="取消置顶" if item["pinned"] else "📌 置顶")
         self._fav_btn.configure(text="取消收藏" if item["favorite"] else "⭐ 收藏")
+
+        # 重置预览状态
+        if self._preview_visible:
+            self._preview_frame.pack_forget()
+            self._editor_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+            self._preview_btn.configure(text="👁️ 预览")
+            self._preview_visible = False
 
     def _toggle_pin(self):
         if not self._current_item:
@@ -599,7 +755,7 @@ class DetailPanel(ctk.CTkFrame):
             self._on_refresh_list()
         except Exception:
             logger.exception("保存备注失败")
-            Toast(self.winfo_toplevel(), "保存失败", "warning")
+            Toast(self.winfo_toplevel(), "保存失败", "error")
 
 
 # ============================================================
@@ -609,8 +765,8 @@ class ManagerWindow(ctk.CTk):
     def __init__(self, target_path: str | None = None):
         super().__init__()
         self.title("📂 FileNote - 文件备注管理器")
-        self.geometry("1280x760")
-        self.minsize(1024, 640)
+        self.geometry("1320x800")
+        self.minsize(1080, 680)
 
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme("blue")
@@ -627,15 +783,12 @@ class ManagerWindow(ctk.CTk):
         self.after(100, self._load_data)
 
     def _build_layout(self):
-        # 左侧导航
         self._sidebar = Sidebar(self, on_nav_change=self._on_nav_change)
         self._sidebar.pack(side="left", fill="y")
 
-        # 中间列表
         self._note_list = NoteList(self, on_select=self._on_select, on_search=self._on_search)
         self._note_list.pack(side="left", fill="both", padx=(2, 0))
 
-        # 右侧详情
         self._detail = DetailPanel(self, on_refresh_list=self._load_data)
         self._detail.pack(side="right", fill="both", expand=True, padx=(0, 2))
         self._detail.show_empty()
@@ -647,7 +800,6 @@ class ManagerWindow(ctk.CTk):
         self.bind("<F5>", lambda e: self._load_data())
 
     def focus_search(self):
-        # 聚焦到搜索框
         for child in self._note_list.winfo_children():
             if isinstance(child, ctk.CTkFrame):
                 for grandchild in child.winfo_children():
