@@ -1,86 +1,45 @@
 @echo off
+chcp 65001 >nul
+echo ========================================
+echo    FileNote - 文件备注管理工具 安装
+echo ========================================
+echo.
 
-:: Simple batch file to register/unregister context menu for FileNote
+set EXE_PATH=%~dp0dist\FileNote\FileNote.exe
 
-cls
-
-echo File Note Tool Setup
- echo ===============
-
-:menu
-cls
-echo Please choose an option:
-echo 1. Register context menu
-echo 2. Unregister context menu
-echo 3. Exit
-
-getinput:
-set "choice="
-set /p choice=Enter option (1-3): 
-
-if not defined choice (
-    echo Invalid option, please try again.
+if not exist "%EXE_PATH%" (
+    echo [错误] 找不到 FileNote.exe
+    echo 请先运行打包脚本生成 exe
     pause
-    goto getinput
+    exit /b 1
 )
 
-if "%choice%"=="1" (
-    goto register
-) else if "%choice%"=="2" (
-    goto unregister
-) else if "%choice%"=="3" (
-    goto exit
+echo [1/2] 注册右键菜单...
+"%EXE_PATH%" --register
+if %errorlevel% equ 0 (
+    echo [成功] 右键菜单已注册
 ) else (
-    echo Invalid option, please try again.
-    pause
-    goto getinput
+    echo [失败] 右键菜单注册失败，请以管理员身份运行
 )
 
-:register
-cls
-echo Registering context menu...
-
-:: Check if Python is available
-where python >nul 2>nul
-if errorlevel 1 (
-    echo Error: Python not found. Please make sure Python is installed and added to PATH.
-    pause
-    goto menu
-)
-
-:: Execute register command
-python "%~dp0main.py" --register
-if errorlevel 1 (
-    echo Registration failed!
+echo.
+echo [2/2] 创建桌面快捷方式...
+set SHORTCUT=%USERPROFILE%\Desktop\FileNote.lnk
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT%'); $s.TargetPath = '%EXE_PATH%'; $s.WorkingDirectory = '%~dp0dist\FileNote'; $s.Description = '文件备注管理工具'; $s.Save()"
+if exist "%SHORTCUT%" (
+    echo [成功] 桌面快捷方式已创建
 ) else (
-    echo Registration completed successfully!
-)
-pause
-goto menu
-
-:unregister
-cls
-echo Unregistering context menu...
-
-:: Check if Python is available
-where python >nul 2>nul
-if errorlevel 1 (
-    echo Error: Python not found. Please make sure Python is installed and added to PATH.
-    pause
-    goto menu
+    echo [提示] 创建快捷方式失败
 )
 
-:: Execute unregister command
-python "%~dp0main.py" --unregister
-if errorlevel 1 (
-    echo Unregistration failed!
-) else (
-    echo Unregistration completed successfully!
-)
+echo.
+echo ========================================
+echo    安装完成！
+echo ========================================
+echo.
+echo 使用方法：
+echo   1. 右键任意文件/文件夹 → 选择"文件备注"或"文件夹备注"
+echo   2. 双击桌面快捷方式打开管理器
+echo   3. 命令行：%EXE_PATH% --gui
+echo.
 pause
-goto menu
-
-:exit
-echo Thank you for using File Note Tool!
-pause
-exit /b 0
