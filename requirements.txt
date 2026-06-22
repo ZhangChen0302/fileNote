@@ -1,0 +1,7 @@
+# FileNote 依赖
+customtkinter>=5.2.0
+pystray>=0.19.0
+Pillow>=10.0.0
+Markdown>=3.5.0
+tkinterweb>=4.0.0
+loguru>=0.7.0
