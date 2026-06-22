@@ -236,8 +236,9 @@ class NoteCard(ctk.CTkFrame):
         self._on_context_menu = on_context_menu
         self._is_selected = is_selected
 
+        border_w = 2 if is_selected else 0
         super().__init__(master, corner_radius=12, fg_color=self._get_bg_color(), cursor="hand2",
-                         border_width=1, border_color=COLOR_BORDER if is_selected else "transparent")
+                         border_width=border_w, border_color=COLOR_BORDER)
 
         self._build()
         self._bind_hover()
