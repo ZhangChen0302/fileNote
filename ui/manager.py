@@ -196,7 +196,7 @@ class Sidebar(ctk.CTkFrame):
         self._tag_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         # 版本信息
-        ctk.CTkLabel(self, text="v2.1", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED).pack(side="bottom", pady=12)
+        ctk.CTkLabel(self, text="v1.0-dev", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED).pack(side="bottom", pady=12)
 
         self._select_nav("全部")
 
