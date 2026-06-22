@@ -716,12 +716,11 @@ class DetailPanel(ctk.CTkFrame):
         self._pin_btn.configure(text="取消置顶" if item["pinned"] else "📌 置顶")
         self._fav_btn.configure(text="取消收藏" if item["favorite"] else "⭐ 收藏")
 
-        # 重置预览状态
-        if self._preview_visible:
-            self._preview_frame.pack_forget()
-            self._editor_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
-            self._preview_btn.configure(text="👁️ 预览")
-            self._preview_visible = False
+        # 确保编辑器可见（隐藏预览）
+        self._preview_frame.pack_forget()
+        self._editor_frame.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+        self._preview_btn.configure(text="👁️ 预览")
+        self._preview_visible = False
 
     def _toggle_pin(self):
         if not self._current_item:
