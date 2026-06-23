@@ -26,6 +26,7 @@ FONT_ICON = ("Segoe UI Emoji", 16)
 
 COLOR_PRIMARY = "#6366F1"
 COLOR_PRIMARY_HOVER = "#4F46E5"
+COLOR_PRIMARY_LIGHT = "#EEF2FF"
 COLOR_SUCCESS = "#10B981"
 COLOR_SUCCESS_HOVER = "#059669"
 COLOR_WARN = "#F59E0B"
@@ -258,38 +259,38 @@ SORT_OPTIONS = [
 # ============================================================
 class DraggableSeparator(ctk.CTkFrame):
     """可拖动的垂直分隔条，用于调整左右面板宽度"""
-    def __init__(self, master, left_widget, right_widget, min_left=200, min_right=300):
+    def __init__(self, master, left_widget, right_widget, left_col=0, min_left=200, min_right=300):
         super().__init__(master, width=6, cursor="sb_h_double_arrow", fg_color=COLOR_BORDER)
         self._left = left_widget
         self._right = right_widget
         self._min_left = min_left
         self._min_right = min_right
         self._dragging = False
+        self._left_col = left_col
 
         self.bind("<Button-1>", self._on_press)
         self.bind("<B1-Motion>", self._on_drag)
         self.bind("<ButtonRelease-1>", self._on_release)
-        self.bind("<Enter>", lambda e: self.configure(fg_color=COLOR_PRIMARY))
-        self.bind("<Leave>", lambda e: self.configure(fg_color=COLOR_BORDER))
+        self.bind("<Enter>", lambda e: self.configure(fg_color=COLOR_PRIMARY) if not self._dragging else None)
+        self.bind("<Leave>", lambda e: self.configure(fg_color=COLOR_BORDER) if not self._dragging else None)
 
     def _on_press(self, event):
         self._dragging = True
         self._start_x = event.x_root
-        self._left_width = self._left.winfo_width()
+        self._start_width = self._left.winfo_width() if self._left else 200
 
     def _on_drag(self, event):
         if not self._dragging:
             return
         dx = event.x_root - self._start_x
-        new_left = self._left_width + dx
-        parent_width = self.master.winfo_width()
-        right_width = parent_width - new_left - 6
-
-        if new_left >= self._min_left and right_width >= self._min_right:
-            self._left.configure(width=new_left)
+        new_width = self._start_width + dx
+        if self._left and new_width >= self._min_left:
+            self.master.columnconfigure(self._left_col, minsize=new_width, weight=0)
+            self._left.configure(width=new_width)
 
     def _on_release(self, event):
         self._dragging = False
+        self.configure(fg_color=COLOR_BORDER)
 
 
 class Sidebar(ctk.CTkFrame):
@@ -404,29 +405,35 @@ class NoteCard(ctk.CTkFrame):
         file_meta = get_file_times(item["path"])
         file_type = get_file_type(item["path"])
         icon = get_file_type_icon(item["path"])
+        type_color = TYPE_COLORS.get(file_type, "#6B7280")
 
-        # 单行：图标 + 文件名 + 类型标签 + 状态
+        # 全边框颜色（不同类型不同颜色）
+        self.configure(border_color=type_color, border_width=2)
+
+        # 顶部行：类型标签 + 图标 + 文件名 + 状态
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=12, pady=(8, 2))
 
+        # 类型小标签（圆角药丸，和边框同色）
+        type_short = file_type[:4] if len(file_type) > 4 else file_type
+        type_badge = ctk.CTkLabel(top, text=type_short, font=("Microsoft YaHei UI", 9, "bold"),
+                                   text_color="white", fg_color=type_color,
+                                   corner_radius=4, width=40, height=18)
+        type_badge.pack(side="left")
+
         icon_label = ctk.CTkLabel(top, text=icon, font=("Segoe UI Emoji", 15), width=24, anchor="center")
-        icon_label.pack(side="left")
+        icon_label.pack(side="left", padx=(6, 0))
 
         name = os.path.basename(item["path"]) or item["path"]
         name_label = ctk.CTkLabel(top, text=name, font=("Microsoft YaHei UI", 13, "bold"), anchor="w",
-                                   text_color=COLOR_TEXT_PRIMARY, wraplength=180)
+                                   text_color=COLOR_TEXT_PRIMARY, wraplength=200)
         name_label.pack(side="left", padx=(6, 0), fill="x", expand=True)
 
-        # 右侧：类型标签 + 状态
+        # 右侧状态
         if item["pinned"]:
             ctk.CTkLabel(top, text="📌", font=("Segoe UI Emoji", 11), width=18).pack(side="right", padx=1)
         if item["favorite"]:
             ctk.CTkLabel(top, text="⭐", font=("Segoe UI Emoji", 11), width=18).pack(side="right", padx=1)
-
-        type_badge = ctk.CTkLabel(top, text=file_type, font=("Microsoft YaHei UI", 9),
-                                   text_color="white", fg_color=COLOR_PRIMARY,
-                                   corner_radius=3, width=48, height=18)
-        type_badge.pack(side="right", padx=(0, 4))
 
         # 路径
         path_label = ctk.CTkLabel(self, text=item["path"], font=FONT_SMALL, text_color=COLOR_INFO,
@@ -514,16 +521,24 @@ class NoteList(ctk.CTkFrame):
         sort_frame = ctk.CTkFrame(self, fg_color="transparent")
         sort_frame.pack(fill="x", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(sort_frame, text="排序:", font=("Microsoft YaHei UI", 10), text_color=COLOR_TEXT_MUTED).pack(side="left")
+        ctk.CTkLabel(sort_frame, text="排序", font=("Microsoft YaHei UI", 11),
+                     text_color=COLOR_TEXT_MUTED).pack(side="left")
 
         self._sort_var = ctk.StringVar(value="备注更新时间")
-        sort_menu = ctk.CTkOptionMenu(
-            sort_frame, variable=self._sort_var, values=[s[0] for s in SORT_OPTIONS],
-            font=("Microsoft YaHei UI", 10), width=120, height=26, corner_radius=6,
-            fg_color="gray70", button_color="gray50", button_hover_color="gray40",
+        self._sort_menu = ctk.CTkOptionMenu(
+            sort_frame, variable=self._sort_var,
+            values=[s[0] for s in SORT_OPTIONS],
+            font=("Microsoft YaHei UI", 11), width=120, height=28,
+            corner_radius=6,
+            fg_color=COLOR_PRIMARY, button_color="#5558E0",
+            button_hover_color="#4338CA",
+            dropdown_fg_color=COLOR_BG_SIDEBAR,
+            dropdown_hover_color=COLOR_PRIMARY_HOVER,
+            dropdown_text_color=("gray15", "gray90"),
+            dropdown_font=("Microsoft YaHei UI", 11),
             command=self._on_sort_select
         )
-        sort_menu.pack(side="left", padx=(4, 0))
+        self._sort_menu.pack(side="left", padx=(6, 0))
 
         # 新增按钮
         add_btn = ctk.CTkButton(
@@ -866,25 +881,28 @@ class ManagerWindow(ctk.CTk):
         self.after(100, self._load_data)
 
     def _build_layout(self):
-        # 左侧导航
+        # 使用 grid 布局，支持拖动调整列宽
+        self.grid_columnconfigure(0, weight=0, minsize=260)  # 侧边栏
+        self.grid_columnconfigure(1, weight=0, minsize=6)    # 分隔条1
+        self.grid_columnconfigure(2, weight=0, minsize=380)  # 列表
+        self.grid_columnconfigure(3, weight=0, minsize=6)    # 分隔条2
+        self.grid_columnconfigure(4, weight=1, minsize=400)  # 详情
+        self.grid_rowconfigure(0, weight=1)
+
         self._sidebar = Sidebar(self, on_nav_change=self._on_nav_change)
-        self._sidebar.pack(side="left", fill="y")
+        self._sidebar.grid(row=0, column=0, sticky="nsew")
 
-        # 分隔条1：侧边栏 <-> 列表
-        sep1 = DraggableSeparator(self, self._sidebar, None, min_left=200, min_right=300)
-        sep1.pack(side="left", fill="y")
+        sep1 = DraggableSeparator(self, self._sidebar, None, left_col=0, min_left=200)
+        sep1.grid(row=0, column=1, sticky="ns")
 
-        # 中间列表
         self._note_list = NoteList(self, on_select=self._on_select, on_search=self._on_search, on_sort_change=self._on_sort_change)
-        self._note_list.pack(side="left", fill="both")
+        self._note_list.grid(row=0, column=2, sticky="nsew")
 
-        # 分隔条2：列表 <-> 详情
-        sep2 = DraggableSeparator(self, self._note_list, None, min_left=300, min_right=400)
-        sep2.pack(side="left", fill="y")
+        sep2 = DraggableSeparator(self, self._note_list, None, left_col=2, min_left=300)
+        sep2.grid(row=0, column=3, sticky="ns")
 
-        # 右侧详情
         self._detail = DetailPanel(self, on_refresh_list=self._load_data)
-        self._detail.pack(side="right", fill="both", expand=True)
+        self._detail.grid(row=0, column=4, sticky="nsew")
         self._detail.show_empty()
 
     def _bind_shortcuts(self):
@@ -958,3 +976,94 @@ class ManagerWindow(ctk.CTk):
         self._note_list.load_items(items)
         tags = fetch_tags()
         self._sidebar.refresh_tags(tags)
+# 文件类型颜色映射（用于卡片左上角发卡标签）
+TYPE_COLORS = {
+    "Python": "#3572A5", "JavaScript": "#F1E05A", "TypeScript": "#3178C6",
+    "HTML": "#E34C26", "CSS": "#563D7C", "JSON": "#292929", "XML": "#0060AC",
+    "Markdown": "#083FA1", "文本": "#6B7280", "Word": "#2B579A", "PDF": "#FF0000",
+    "Excel": "#217346", "PowerPoint": "#D24726", "图片": "#E91E8C",
+    "视频": "#FF6B6B", "音频": "#8B5CF6", "压缩包": "#F59E0B",
+    "程序": "#6B7280", "脚本": "#10B981", "文件夹": "#3B82F6",
+    "C/C++": "#555555", "Java": "#B07219", "Go": "#00ADD8",
+    "Rust": "#DEA584", "Ruby": "#CC342D", "PHP": "#4F5D95",
+}
+import os
+import sqlite3
+import datetime as dt
+import customtkinter as ctk
+from tkinter import messagebox, Menu, Listbox
+from loguru import logger
+from data.store import connect, _now
+import markdown
+class StyledDropdown(ctk.CTkFrame):
+    """自定义下拉框"""
+    def __init__(self, master, values, default, on_select, width=160):
+        super().__init__(master, fg_color="transparent")
+        self._values = values
+        self._on_select = on_select
+        self._is_open = False
+        self._width = width
+        self._selected = default
+        self._mouse_on_item = False
+
+        self._btn = ctk.CTkButton(
+            self, text=f"  {default}  ▾", font=("Microsoft YaHei UI", 11),
+            width=width, height=30, corner_radius=8, anchor="w",
+            fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
+            command=self._toggle
+        )
+        self._btn.pack()
+
+        self._dropdown = ctk.CTkToplevel(self)
+        self._dropdown.withdraw()
+        self._dropdown.overrideredirect(True)
+        self._dropdown.attributes("-topmost", True)
+        self._dropdown.bind("<Leave>", self._on_leave_dropdown)
+        self._dropdown.bind("<FocusOut>", lambda e: self._close())
+
+        self._list_frame = ctk.CTkFrame(self._dropdown, fg_color=("white", "gray20"),
+                                         corner_radius=8, border_width=1, border_color=COLOR_BORDER)
+        self._list_frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+        for val in values:
+            item_btn = ctk.CTkButton(
+                self._list_frame, text=val, font=("Microsoft YaHei UI", 11),
+                width=width, height=30, corner_radius=6, anchor="w",
+                fg_color="transparent", text_color=COLOR_TEXT_PRIMARY,
+                hover_color=COLOR_PRIMARY_LIGHT,
+                command=lambda v=val: self._select(v)
+            )
+            item_btn.pack(fill="x", padx=4, pady=1)
+            item_btn.bind("<Enter>", lambda e: setattr(self, '_mouse_on_item', True))
+            item_btn.bind("<Leave>", lambda e: setattr(self, '_mouse_on_item', False))
+
+    def _toggle(self):
+        if self._is_open:
+            self._close()
+        else:
+            x = self._btn.winfo_rootx()
+            y = self._btn.winfo_rooty() + 34
+            w = self._width
+            h = len(self._values) * 32 + 8
+            self._dropdown.geometry(f"{w}x{h}+{x}+{y}")
+            self._dropdown.deiconify()
+            self._is_open = True
+            self._mouse_on_item = False
+
+    def _on_leave_dropdown(self, event):
+        # 延迟检查，避免鼠标从按钮移到列表项时误关
+        self.after(200, self._check_close)
+
+    def _check_close(self):
+        if self._is_open and not self._mouse_on_item:
+            self._close()
+
+    def _close(self):
+        self._dropdown.withdraw()
+        self._is_open = False
+
+    def _select(self, value):
+        self._selected = value
+        self._btn.configure(text=value)
+        self._close()
+        self._on_select(value)
