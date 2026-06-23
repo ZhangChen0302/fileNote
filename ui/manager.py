@@ -1,5 +1,5 @@
 """
-FileNote 主窗口管理器 v2.1
+FileNote 主窗口管理器
 - 左侧：导航栏（带图标、高亮选中）
 - 中间：卡片式备注列表（搜索/筛选）
 - 右侧：详情面板（Markdown 编辑/预览）
@@ -155,7 +155,7 @@ NAV_ITEMS = [
 
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, on_nav_change):
-        super().__init__(master, width=240, corner_radius=0, fg_color=COLOR_BG_SIDEBAR)
+        super().__init__(master, width=260, corner_radius=0, fg_color=COLOR_BG_SIDEBAR)
         self.on_nav_change = on_nav_change
         self._current = ""
         self._nav_buttons: dict[str, ctk.CTkButton] = {}
@@ -164,9 +164,9 @@ class Sidebar(ctk.CTkFrame):
     def _build(self):
         # Logo 区域
         logo_frame = ctk.CTkFrame(self, fg_color="transparent")
-        logo_frame.pack(fill="x", padx=20, pady=(24, 16))
-        ctk.CTkLabel(logo_frame, text="📂", font=("Segoe UI Emoji", 32)).pack(side="left", padx=(0, 10))
-        ctk.CTkLabel(logo_frame, text="FileNote", font=FONT_TITLE, text_color=COLOR_PRIMARY).pack(side="left")
+        logo_frame.pack(fill="x", padx=20, pady=(28, 20))
+        ctk.CTkLabel(logo_frame, text="📂", font=("Segoe UI Emoji", 36)).pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(logo_frame, text="FileNote", font=("微软雅黑", 24, "bold"), text_color=COLOR_PRIMARY).pack(side="left")
 
         # 分隔线
         ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(0, 16))
@@ -177,10 +177,10 @@ class Sidebar(ctk.CTkFrame):
         # 导航按钮
         for name, icon in NAV_ITEMS:
             btn = ctk.CTkButton(
-                self, text=f"  {icon}  {name}", anchor="w", font=FONT_NORMAL, height=44,
+                self, text=f"  {icon}  {name}", anchor="w", font=("微软雅黑", 14), height=48,
                 fg_color="transparent", text_color=COLOR_TEXT_PRIMARY,
                 hover_color=("gray85", "gray25"),
-                corner_radius=10, command=lambda n=name: self._select_nav(n),
+                corner_radius=12, command=lambda n=name: self._select_nav(n),
             )
             btn.pack(fill="x", padx=14, pady=3)
             self._nav_buttons[name] = btn
@@ -511,7 +511,7 @@ class DetailPanel(ctk.CTkFrame):
     def _build(self):
         # 空状态
         self._empty_frame = ctk.CTkFrame(self, fg_color="transparent")
-        ctk.CTkLabel(self._empty_frame, text="📝", font=("Segoe UI Emoji", 72)).pack(pady=(100, 20))
+        ctk.CTkLabel(self._empty_frame, text="📝", font=("Segoe UI Emoji", 80)).pack(pady=(120, 24))
         ctk.CTkLabel(self._empty_frame, text="选择一条备注查看详情", font=FONT_SUBTITLE,
                       text_color=COLOR_TEXT_SECONDARY).pack()
         ctk.CTkLabel(self._empty_frame, text="或点击左侧「新增备注」创建", font=FONT_SMALL,
@@ -527,23 +527,23 @@ class DetailPanel(ctk.CTkFrame):
 
         self._save_btn = ctk.CTkButton(action_bar, text="💾 保存", width=80, font=FONT_SMALL,
                                         fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER,
-                                        corner_radius=8, command=self._save_note)
+                                        corner_radius=10, command=self._save_note, height=36)
         self._save_btn.pack(side="right", padx=4)
         self._del_btn = ctk.CTkButton(action_bar, text="🗑️ 删除", width=80, font=FONT_SMALL,
                                        fg_color=COLOR_DANGER, hover_color=COLOR_DANGER_HOVER,
-                                       corner_radius=8, command=self._delete_note)
+                                        corner_radius=10, command=self._delete_note, height=36)
         self._del_btn.pack(side="right", padx=4)
         self._preview_btn = ctk.CTkButton(action_bar, text="👁️ 预览", width=80, font=FONT_SMALL,
                                            fg_color=COLOR_INFO, hover_color="#2563EB",
-                                           corner_radius=8, command=self._toggle_preview)
+                                            corner_radius=10, command=self._toggle_preview, height=36)
         self._preview_btn.pack(side="right", padx=4)
         self._fav_btn = ctk.CTkButton(action_bar, text="⭐ 收藏", width=80, font=FONT_SMALL,
                                        fg_color=COLOR_WARN, hover_color=COLOR_WARN_HOVER,
-                                       corner_radius=8, command=self._toggle_fav)
+                                        corner_radius=10, command=self._toggle_fav, height=36)
         self._fav_btn.pack(side="left", padx=4)
         self._pin_btn = ctk.CTkButton(action_bar, text="📌 置顶", width=80, font=FONT_SMALL,
                                        fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER,
-                                       corner_radius=8, command=self._toggle_pin)
+                                        corner_radius=10, command=self._toggle_pin, height=36)
         self._pin_btn.pack(side="left", padx=4)
 
         # 分隔线
@@ -552,7 +552,7 @@ class DetailPanel(ctk.CTkFrame):
         # 路径（可点击）
         path_frame = ctk.CTkFrame(self._detail_frame, fg_color="transparent")
         path_frame.pack(fill="x", padx=18, pady=(4, 2))
-        ctk.CTkLabel(path_frame, text="📍 路径：", font=FONT_NORMAL, text_color=COLOR_TEXT_MUTED).pack(side="left")
+        ctk.CTkLabel(path_frame, text="📍 路径：", font=FONT_NORMAL, text_color=COLOR_TEXT_SECONDARY).pack(side="left")
         self._path_label = ctk.CTkLabel(path_frame, text="", font=FONT_NORMAL,
                                          text_color=COLOR_INFO, anchor="w", cursor="hand2")
         self._path_label.pack(side="left", fill="x", expand=True)
@@ -572,7 +572,7 @@ class DetailPanel(ctk.CTkFrame):
 
         # 编辑器
         editor_label = ctk.CTkLabel(self._editor_frame, text="备注内容（Markdown）", font=FONT_SMALL,
-                                     text_color=COLOR_TEXT_MUTED, anchor="w")
+                                     text_color=COLOR_TEXT_SECONDARY, anchor="w")
         editor_label.pack(fill="x", padx=2, pady=(0, 6))
 
         self._editor = ctk.CTkTextbox(self._editor_frame, font=FONT_MONO, wrap="word",
