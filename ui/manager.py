@@ -22,7 +22,7 @@ FONT_TITLE = ("Microsoft YaHei UI", 22, "bold")
 FONT_SUBTITLE = ("Microsoft YaHei UI", 15, "bold")
 FONT_NORMAL = ("Microsoft YaHei UI", 13)
 FONT_SMALL = ("Microsoft YaHei UI", 11)
-FONT_MONO = ("Consolas", 13)  # Consolas 更粗更清晰，适合编辑
+FONT_MONO = ("Ubuntu Mono", 14)  # Ubuntu Mono 圆润清晰
 FONT_ICON = ("Segoe UI Emoji", 16)
 
 # 主色调 - 渐变蓝紫系
