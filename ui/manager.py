@@ -56,6 +56,7 @@ COLOR_BG_MAIN = ("#F8FAFC", "gray13")
 # ============================================================
 def fetch_notes(keyword: str = "", tag: str | None = None,
                 only_pinned: bool = False, only_fav: bool = False,
+                file_type_exts: list[str] | None = None,
                 limit: int = 500) -> list[dict]:
     sql = "SELECT id, path, note, pinned, favorite, created_at, updated_at FROM notes WHERE 1=1"
     params: list = []
@@ -70,6 +71,11 @@ def fetch_notes(keyword: str = "", tag: str | None = None,
     if tag:
         sql += " AND id IN (SELECT note_id FROM note_tags JOIN tags ON tags.id=note_tags.tag_id WHERE tags.name=?)"
         params.append(tag)
+    if file_type_exts:
+        placeholders = ",".join(["?"] * len(file_type_exts))
+        sql += f" AND (path LIKE ? OR LOWER(SUBSTR(path, INSTR(path, '.'))) IN ({placeholders}))"
+        # 添加文件夹条件
+        params += ["%.%"] + list(file_type_exts)
     sql += " ORDER BY pinned DESC, updated_at DESC LIMIT ?"
     params.append(limit)
     with connect() as conn:
@@ -150,7 +156,18 @@ NAV_ITEMS = [
     ("全部", "📋"),
     ("收藏", "⭐"),
     ("置顶", "📌"),
-    ("最近修改", "🕐"),
+    ("最近更新", "🕐"),
+]
+
+# 文件分类子菜单
+FILE_TYPE_ITEMS = [
+    ("文档", "📄", [".txt", ".md", ".doc", ".docx", ".pdf"]),
+    ("图片", "🖼️", [".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp"]),
+    ("代码", "💻", [".py", ".js", ".ts", ".html", ".css", ".java", ".c", ".cpp", ".go", ".rs"]),
+    ("数据", "📊", [".json", ".xml", ".csv", ".xls", ".xlsx"]),
+    ("压缩包", "📦", [".zip", ".rar", ".7z", ".tar", ".gz"]),
+    ("视频", "🎬", [".mp4", ".avi", ".mkv", ".mov", ".wmv"]),
+    ("音频", "🎵", [".mp3", ".wav", ".flac", ".aac", ".ogg"]),
 ]
 
 
@@ -186,8 +203,23 @@ class Sidebar(ctk.CTkFrame):
             btn.pack(fill="x", padx=14, pady=3)
             self._nav_buttons[name] = btn
 
+        # 文件分类标题
+        ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(12, 8))
+        ctk.CTkLabel(self, text="文件类型", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED, anchor="w").pack(fill="x", padx=24, pady=(4, 8))
+
+        # 文件分类按钮
+        for name, icon, exts in FILE_TYPE_ITEMS:
+            btn = ctk.CTkButton(
+                self, text=f"  {icon}  {name}", anchor="w", font=("微软雅黑", 12), height=36,
+                fg_color="transparent", text_color=COLOR_TEXT_PRIMARY,
+                hover_color=("gray85", "gray25"),
+                corner_radius=10, command=lambda n=name, e=exts: self._select_file_type(n, e),
+            )
+            btn.pack(fill="x", padx=18, pady=2)
+            self._nav_buttons[f"type:{name}"] = btn
+
         # 分隔线
-        ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(16, 12))
+        ctk.CTkFrame(self, height=2, fg_color=COLOR_BORDER).pack(fill="x", padx=20, pady=(12, 12))
 
         # 标签标题
         ctk.CTkLabel(self, text="标签", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED, anchor="w").pack(fill="x", padx=24, pady=(4, 8))
@@ -209,6 +241,16 @@ class Sidebar(ctk.CTkFrame):
             else:
                 btn.configure(fg_color="transparent", text_color=COLOR_TEXT_PRIMARY)
         self.on_nav_change(name)
+
+    def _select_file_type(self, name: str, exts: list[str]):
+        """选择文件类型分类"""
+        self._current = f"type:{name}"
+        for k, btn in self._nav_buttons.items():
+            if k == f"type:{name}":
+                btn.configure(fg_color=COLOR_PRIMARY, text_color="white")
+            else:
+                btn.configure(fg_color="transparent", text_color=COLOR_TEXT_PRIMARY)
+        self.on_nav_change(f"type:{name}")
 
     def refresh_tags(self, tags: list[str]):
         for w in self._tag_frame.winfo_children():
@@ -252,28 +294,16 @@ class NoteCard(ctk.CTkFrame):
     def _build(self):
         item = self._item
 
+        # 获取文件元数据
+        file_meta = get_file_times(item["path"])
+        file_type = get_file_type(item["path"])
+
         # 顶部：图标 + 文件名 + 状态标签
         top = ctk.CTkFrame(self, fg_color="transparent")
         top.pack(fill="x", padx=14, pady=(12, 4))
 
         # 文件类型图标
-        if os.path.isdir(item["path"]):
-            icon = "📁"
-        else:
-            ext = os.path.splitext(item["path"])[1].lower()
-            icon_map = {
-                ".py": "🐍", ".js": "📜", ".ts": "📘", ".html": "🌐", ".css": "🎨",
-                ".md": "📝", ".txt": "📄", ".json": "📋", ".xml": "📰",
-                ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".gif": "🖼️", ".svg": "🖼️",
-                ".pdf": "📕", ".doc": "📘", ".docx": "📘", ".xls": "📊", ".xlsx": "📊",
-                ".ppt": "📙", ".pptx": "📙",
-                ".zip": "📦", ".rar": "📦", ".7z": "📦",
-                ".exe": "⚙️", ".bat": "⚙️", ".sh": "⚙️", ".cmd": "⚙️",
-                ".mp3": "🎵", ".mp4": "🎬", ".wav": "🎵", ".avi": "🎬",
-                ".c": "🔧", ".cpp": "🔧", ".h": "🔧", ".java": "☕", ".go": "🔵",
-                ".rs": "🦀", ".swift": "🍎", ".kt": "🟣",
-            }
-            icon = icon_map.get(ext, "📄")
+        icon = get_file_type_icon(item["path"])
 
         ctk.CTkLabel(top, text=icon, font=FONT_ICON, width=30).pack(side="left")
 
@@ -281,11 +311,15 @@ class NoteCard(ctk.CTkFrame):
         ctk.CTkLabel(top, text=name, font=FONT_SUBTITLE, anchor="w",
                       text_color=COLOR_TEXT_PRIMARY, wraplength=220).pack(side="left", padx=(6, 0), fill="x", expand=True)
 
-        # 状态标签
+        # 状态标签（置顶/收藏）
         if item["pinned"]:
             ctk.CTkLabel(top, text="📌", font=("Segoe UI Emoji", 13), width=26).pack(side="right", padx=2)
         if item["favorite"]:
             ctk.CTkLabel(top, text="⭐", font=("Segoe UI Emoji", 13), width=26).pack(side="right", padx=2)
+
+        # 文件类型标签
+        type_label = ctk.CTkLabel(top, text=file_type, font=FONT_SMALL, text_color=COLOR_TEXT_MUTED)
+        type_label.pack(side="right", padx=(0, 8))
 
         # 路径（可点击）
         path_label = ctk.CTkLabel(self, text=item["path"], font=FONT_SMALL, text_color=COLOR_INFO,
@@ -302,7 +336,8 @@ class NoteCard(ctk.CTkFrame):
                           anchor="w", wraplength=280, justify="left").pack(fill="x", padx=14, pady=(0, 6))
 
         # 底部时间
-        ctk.CTkLabel(self, text=f"更新于 {item['updated_at'][:16]}", font=FONT_SMALL,
+        time_text = f"📁 文件: {file_meta['file_modified']}  |  📝 备注: {item['updated_at'][:16]}"
+        ctk.CTkLabel(self, text=time_text, font=FONT_SMALL,
                       text_color=COLOR_TEXT_MUTED, anchor="e").pack(fill="x", padx=14, pady=(0, 10))
 
     def _open_path(self, path: str):
@@ -708,8 +743,11 @@ class DetailPanel(ctk.CTkFrame):
         self._current_item = item
 
         self._path_label.configure(text=item["path"])
+
+        # 获取文件实际时间
+        file_meta = get_file_times(item["path"])
         self._time_label.configure(
-            text=f"创建于 {item['created_at'][:16]}  ·  更新于 {item['updated_at'][:16]}"
+            text=f"📁 文件创建: {file_meta['file_created']}  |  文件修改: {file_meta['file_modified']}  |  📝 备注更新: {item['updated_at'][:16]}"
         )
         self._editor.delete("1.0", "end")
         self._editor.insert("1.0", item["note"])
@@ -834,13 +872,94 @@ class ManagerWindow(ctk.CTk):
             items = fetch_notes(keyword=kw, only_fav=True)
         elif nav == "置顶":
             items = fetch_notes(keyword=kw, only_pinned=True)
-        elif nav == "最近修改":
+        elif nav == "最近更新":
             items = fetch_notes(keyword=kw)
         elif nav.startswith("tag:"):
             items = fetch_notes(keyword=kw, tag=nav[4:])
+        elif nav.startswith("type:"):
+            type_name = nav[5:]
+            # 从 FILE_TYPE_ITEMS 中找到对应的扩展名
+            for name, icon, exts in FILE_TYPE_ITEMS:
+                if name == type_name:
+                    items = fetch_notes(keyword=kw, file_type_exts=exts)
+                    break
+            else:
+                items = fetch_notes(keyword=kw)
         else:
             items = fetch_notes(keyword=kw)
 
         self._note_list.load_items(items)
         tags = fetch_tags()
         self._sidebar.refresh_tags(tags)
+import os
+import sqlite3
+import datetime as dt
+import customtkinter as ctk
+from tkinter import messagebox, Menu
+from loguru import logger
+from data.store import connect, _now
+import markdown
+
+
+# ============================================================
+# 文件元数据工具
+# ============================================================
+def get_file_times(path: str) -> dict:
+    """获取文件的实际创建时间和修改时间"""
+    try:
+        stat = os.stat(path)
+        ctime = dt.datetime.fromtimestamp(stat.st_ctime)
+        mtime = dt.datetime.fromtimestamp(stat.st_mtime)
+        return {
+            "file_created": ctime.strftime("%Y-%m-%d %H:%M"),
+            "file_modified": mtime.strftime("%Y-%m-%d %H:%M"),
+            "file_size": stat.st_size,
+        }
+    except (OSError, ValueError):
+        return {
+            "file_created": "N/A",
+            "file_modified": "N/A",
+            "file_size": 0,
+        }
+
+
+def get_file_type(path: str) -> str:
+    """获取文件类型描述"""
+    if os.path.isdir(path):
+        return "文件夹"
+    ext = os.path.splitext(path)[1].lower()
+    type_map = {
+        ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
+        ".html": "HTML", ".css": "CSS", ".json": "JSON",
+        ".md": "Markdown", ".txt": "文本", ".doc": "Word",
+        ".docx": "Word", ".pdf": "PDF", ".xls": "Excel",
+        ".xlsx": "Excel", ".ppt": "PowerPoint", ".pptx": "PowerPoint",
+        ".jpg": "图片", ".jpeg": "图片", ".png": "图片",
+        ".gif": "图片", ".svg": "图片", ".mp4": "视频",
+        ".mp3": "音频", ".zip": "压缩包", ".rar": "压缩包",
+        ".7z": "压缩包", ".exe": "程序", ".bat": "脚本",
+        ".sh": "脚本", ".c": "C/C++", ".cpp": "C/C++",
+        ".h": "C/C++", ".java": "Java", ".go": "Go",
+        ".rs": "Rust", ".swift": "Swift", ".kt": "Kotlin",
+    }
+    return type_map.get(ext, ext.upper().lstrip(".") or "未知")
+
+
+def get_file_type_icon(path: str) -> str:
+    """获取文件类型图标"""
+    if os.path.isdir(path):
+        return "📁"
+    ext = os.path.splitext(path)[1].lower()
+    icon_map = {
+        ".py": "🐍", ".js": "📜", ".ts": "📘", ".html": "🌐", ".css": "🎨",
+        ".md": "📝", ".txt": "📄", ".json": "📋", ".xml": "📰",
+        ".jpg": "🖼️", ".jpeg": "🖼️", ".png": "🖼️", ".gif": "🖼️", ".svg": "🖼️",
+        ".pdf": "📕", ".doc": "📘", ".docx": "📘", ".xls": "📊", ".xlsx": "📊",
+        ".ppt": "📙", ".pptx": "📙",
+        ".zip": "📦", ".rar": "📦", ".7z": "📦",
+        ".exe": "⚙️", ".bat": "⚙️", ".sh": "⚙️", ".cmd": "⚙️",
+        ".mp3": "🎵", ".mp4": "🎬", ".wav": "🎵", ".avi": "🎬",
+        ".c": "🔧", ".cpp": "🔧", ".h": "🔧", ".java": "☕", ".go": "🔵",
+        ".rs": "🦀", ".swift": "🍎", ".kt": "🟣",
+    }
+    return icon_map.get(ext, "📄")
