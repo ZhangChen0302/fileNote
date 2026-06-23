@@ -17,11 +17,12 @@ import markdown
 # 视觉常量 - 现代化配色
 # ============================================================
 # 字体
-FONT_TITLE = ("微软雅黑", 22, "bold")
-FONT_SUBTITLE = ("微软雅黑", 15, "bold")
-FONT_NORMAL = ("微软雅黑", 13)
-FONT_SMALL = ("微软雅黑", 11)
-FONT_MONO = ("Cascadia Code", 12)  # 更现代的等宽字体
+# 使用 "Microsoft YaHei UI" 而非 "Microsoft YaHei"，UI 版本中英文混排更协调
+FONT_TITLE = ("Microsoft YaHei UI", 22, "bold")
+FONT_SUBTITLE = ("Microsoft YaHei UI", 15, "bold")
+FONT_NORMAL = ("Microsoft YaHei UI", 13)
+FONT_SMALL = ("Microsoft YaHei UI", 11)
+FONT_MONO = ("Cascadia Mono", 12)  # Cascadia Mono 比 Cascadia Code 更紧凑
 FONT_ICON = ("Segoe UI Emoji", 16)
 
 # 主色调 - 渐变蓝紫系

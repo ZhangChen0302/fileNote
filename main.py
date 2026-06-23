@@ -69,10 +69,10 @@ def _do_quick_edit(target_path: str):
     COLOR_TEXT_PRIMARY = ("gray15", "gray90")
     COLOR_TEXT_MUTED = ("gray55", "gray50")
 
-    FONT_TITLE = ("微软雅黑", 18, "bold")
-    FONT_NORMAL = ("微软雅黑", 13)
-    FONT_SMALL = ("微软雅黑", 11)
-    FONT_MONO = ("Cascadia Code", 12)
+    FONT_TITLE = ("Microsoft YaHei UI", 18, "bold")
+    FONT_NORMAL = ("Microsoft YaHei UI", 13)
+    FONT_SMALL = ("Microsoft YaHei UI", 11)
+    FONT_MONO = ("Cascadia Mono", 12)
     FONT_ICON = ("Segoe UI Emoji", 16)
 
     # 查询现有备注
