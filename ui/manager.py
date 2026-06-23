@@ -72,16 +72,17 @@ def fetch_notes(keyword: str = "", tag: str | None = None,
         sql += " AND id IN (SELECT note_id FROM note_tags JOIN tags ON tags.id=note_tags.tag_id WHERE tags.name=?)"
         params.append(tag)
     if file_type_exts:
-        placeholders = ",".join(["?"] * len(file_type_exts))
-        sql += f" AND (path LIKE ? OR LOWER(SUBSTR(path, INSTR(path, '.'))) IN ({placeholders}))"
-        # 添加文件夹条件
-        params += ["%.%"] + list(file_type_exts)
+        pass  # Python 端筛选
     sql += " ORDER BY pinned DESC, updated_at DESC LIMIT ?"
     params.append(limit)
     with connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    results = [dict(r) for r in rows]
+    # Python 端按文件类型筛选
+    if file_type_exts:
+        results = [r for r in results if any(r["path"].lower().endswith(ext) for ext in file_type_exts)]
+    return results[:limit]
 
 
 def fetch_tags() -> list[str]:
@@ -161,13 +162,13 @@ NAV_ITEMS = [
 
 # 文件分类子菜单
 FILE_TYPE_ITEMS = [
-    ("文档", "📄", [".txt", ".md", ".doc", ".docx", ".pdf"]),
-    ("图片", "🖼️", [".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp"]),
-    ("代码", "💻", [".py", ".js", ".ts", ".html", ".css", ".java", ".c", ".cpp", ".go", ".rs"]),
-    ("数据", "📊", [".json", ".xml", ".csv", ".xls", ".xlsx"]),
-    ("压缩包", "📦", [".zip", ".rar", ".7z", ".tar", ".gz"]),
-    ("视频", "🎬", [".mp4", ".avi", ".mkv", ".mov", ".wmv"]),
-    ("音频", "🎵", [".mp3", ".wav", ".flac", ".aac", ".ogg"]),
+    ("文档", "📄", [".txt", ".md", ".doc", ".docx", ".pdf", ".rtf"]),
+    ("图片", "🏞️", [".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp", ".webp", ".ico"]),
+    ("代码", "💻", [".py", ".js", ".ts", ".html", ".css", ".java", ".c", ".cpp", ".go", ".rs", ".rb", ".php"]),
+    ("数据", "📊", [".json", ".xml", ".csv", ".xls", ".xlsx", ".yaml", ".yml", ".toml"]),
+    ("压缩包", "📦", [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"]),
+    ("视频", "🎬", [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv"]),
+    ("音频", "🎵", [".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma"]),
 ]
 
 
