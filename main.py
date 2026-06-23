@@ -41,7 +41,6 @@ def launch_quick_edit(target_path: str):
     try:
         _do_quick_edit(target_path)
     except Exception:
-        # 错误时弹窗显示，避免窗口一闪而过看不到原因
         err = traceback.format_exc()
         logger.exception("快速编辑出错")
         try:
@@ -53,13 +52,30 @@ def launch_quick_edit(target_path: str):
 
 def _do_quick_edit(target_path: str):
     import customtkinter as ctk
-    from ui.manager import upsert_note
+    from ui.manager import upsert_note, Toast
     from data.store import connect
     import sqlite3
+    import markdown as md_lib
 
     ctk.set_appearance_mode("system")
     ctk.set_default_color_theme("blue")
 
+    # 配色（与 manager.py 保持一致）
+    COLOR_PRIMARY = "#6366F1"
+    COLOR_PRIMARY_HOVER = "#4F46E5"
+    COLOR_SUCCESS = "#10B981"
+    COLOR_SUCCESS_HOVER = "#059669"
+    COLOR_BG_SIDEBAR = ("#F1F5F9", "gray15")
+    COLOR_TEXT_PRIMARY = ("gray15", "gray90")
+    COLOR_TEXT_MUTED = ("gray55", "gray50")
+
+    FONT_TITLE = ("微软雅黑", 18, "bold")
+    FONT_NORMAL = ("微软雅黑", 13)
+    FONT_SMALL = ("微软雅黑", 11)
+    FONT_MONO = ("Cascadia Code", 12)
+    FONT_ICON = ("Segoe UI Emoji", 16)
+
+    # 查询现有备注
     existing_note = ""
     with connect() as conn:
         conn.row_factory = sqlite3.Row
@@ -69,45 +85,149 @@ def _do_quick_edit(target_path: str):
             existing_note = row["note"]
 
     root = ctk.CTk()
-    root.title(f"备注 - {os.path.basename(target_path) or target_path}")
-    root.geometry("560x420")
-    root.minsize(400, 300)
+    root.title("FileNote - 快速编辑")
+    root.geometry("640x520")
+    root.minsize(480, 380)
     root.attributes('-topmost', True)
 
-    ctk.CTkLabel(root, text=f"路径：{target_path}", font=("Microsoft YaHei UI", 11),
-                 text_color="gray", anchor="w").pack(fill="x", padx=12, pady=(10, 2))
+    # ===== 顶部标题栏 =====
+    header = ctk.CTkFrame(root, fg_color=COLOR_PRIMARY, corner_radius=0, height=60)
+    header.pack(fill="x")
+    header.pack_propagate(False)
 
-    editor = ctk.CTkTextbox(root, font=("Consolas", 13), wrap="word")
-    editor.pack(fill="both", expand=True, padx=12, pady=8)
+    title_frame = ctk.CTkFrame(header, fg_color="transparent")
+    title_frame.pack(fill="both", expand=True, padx=16)
+
+    # 文件图标
+    if os.path.isdir(target_path):
+        icon = "📁"
+    else:
+        ext = os.path.splitext(target_path)[1].lower()
+        icon_map = {".py": "🐍", ".js": "📜", ".ts": "📘", ".html": "🌐", ".css": "🎨",
+                    ".md": "📝", ".txt": "📄", ".json": "📋", ".jpg": "🖼️", ".png": "🖼️",
+                    ".pdf": "📕", ".doc": "📘", ".xls": "📊", ".zip": "📦"}
+        icon = icon_map.get(ext, "📄")
+
+    ctk.CTkLabel(title_frame, text=icon, font=FONT_ICON, text_color="white").pack(side="left", padx=(0, 8))
+    name = os.path.basename(target_path) or target_path
+    ctk.CTkLabel(title_frame, text=name, font=FONT_TITLE, text_color="white", anchor="w").pack(side="left", fill="x", expand=True)
+
+    # ===== 路径栏 =====
+    path_frame = ctk.CTkFrame(root, fg_color=COLOR_BG_SIDEBAR, corner_radius=0, height=36)
+    path_frame.pack(fill="x")
+    path_frame.pack_propagate(False)
+    ctk.CTkLabel(path_frame, text=f"📍 {target_path}", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED, anchor="w").pack(fill="both", padx=16, expand=True)
+
+    # ===== 编辑/预览切换 =====
+    tab_frame = ctk.CTkFrame(root, fg_color="transparent")
+    tab_frame.pack(fill="x", padx=16, pady=(12, 4))
+
+    editor_visible = [True]
+
+    edit_tab_btn = ctk.CTkButton(tab_frame, text="✏️ 编辑", font=FONT_NORMAL, width=80, height=32,
+                                  fg_color=COLOR_PRIMARY, hover_color=COLOR_PRIMARY_HOVER, corner_radius=8)
+    edit_tab_btn.pack(side="left", padx=(0, 4))
+
+    preview_tab_btn = ctk.CTkButton(tab_frame, text="👁️ 预览", font=FONT_NORMAL, width=80, height=32,
+                                     fg_color="gray70", hover_color="gray60", corner_radius=8)
+    preview_tab_btn.pack(side="left")
+
+    # ===== 编辑器 =====
+    editor = ctk.CTkTextbox(root, font=FONT_MONO, wrap="word", corner_radius=10, border_width=1)
     if existing_note:
         editor.insert("1.0", existing_note)
+    editor.pack(fill="both", expand=True, padx=16, pady=(0, 8))
 
-    btn_frame = ctk.CTkFrame(root, fg_color="transparent")
-    btn_frame.pack(fill="x", padx=12, pady=(0, 10))
+    # ===== 预览区 =====
+    preview_frame = ctk.CTkFrame(root, fg_color="transparent")
+    try:
+        from tkinterweb import HtmlFrame
+        html_frame = HtmlFrame(preview_frame, messages_enabled=False)
+        html_frame.pack(fill="both", expand=True)
+    except ImportError:
+        html_frame = None
+        ctk.CTkLabel(preview_frame, text="需要安装 tkinterweb：pip install tkinterweb",
+                      font=FONT_NORMAL, text_color=COLOR_TEXT_MUTED).pack(expand=True)
+
+    def switch_to_edit():
+        editor_visible[0] = True
+        preview_frame.pack_forget()
+        editor.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        edit_tab_btn.configure(fg_color=COLOR_PRIMARY)
+        preview_tab_btn.configure(fg_color="gray70")
+
+    def switch_to_preview():
+        if not html_frame:
+            Toast(root, "需要安装 tkinterweb", "warning")
+            return
+        editor_visible[0] = False
+        editor.pack_forget()
+        preview_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        edit_tab_btn.configure(fg_color="gray70")
+        preview_tab_btn.configure(fg_color=COLOR_PRIMARY)
+
+        md_text = editor.get("1.0", "end").strip()
+        if not md_text:
+            html_content = "<p style='color:gray;'>暂无内容</p>"
+        else:
+            html_content = md_lib.markdown(md_text, extensions=['fenced_code', 'tables', 'nl2br'])
+
+        full_html = f"""<!DOCTYPE html><html><head><style>
+        body {{ font-family: 'Microsoft YaHei UI', sans-serif; font-size: 14px; line-height: 1.8; color: #1f2937; padding: 16px; }}
+        h1, h2, h3 {{ color: #111827; margin-top: 1.2em; }}
+        h1 {{ font-size: 1.8em; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.3em; }}
+        h2 {{ font-size: 1.5em; border-bottom: 1px solid #e5e7eb; }}
+        code {{ background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Cascadia Code', monospace; }}
+        pre {{ background: #1f2937; color: #f9fafb; padding: 16px; border-radius: 8px; overflow-x: auto; }}
+        pre code {{ background: transparent; color: inherit; padding: 0; }}
+        blockquote {{ border-left: 4px solid #6366f1; padding-left: 16px; color: #6b7280; }}
+        a {{ color: #3b82f6; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        th, td {{ border: 1px solid #e5e7eb; padding: 8px 12px; }}
+        th {{ background: #f9fafb; }}
+        </style></head><body>{html_content}</body></html>"""
+        html_frame.load_html(full_html)
+
+    edit_tab_btn.configure(command=switch_to_edit)
+    preview_tab_btn.configure(command=switch_to_preview)
+
+    # ===== 底部按钮栏 =====
+    btn_frame = ctk.CTkFrame(root, fg_color=COLOR_BG_SIDEBAR, corner_radius=0, height=56)
+    btn_frame.pack(fill="x", side="bottom")
+    btn_frame.pack_propagate(False)
+
+    btn_inner = ctk.CTkFrame(btn_frame, fg_color="transparent")
+    btn_inner.pack(fill="both", expand=True, padx=16)
 
     def save():
         note = editor.get("1.0", "end").strip()
         try:
             upsert_note(target_path, note)
             logger.info("备注已保存：{}", target_path)
-            root.destroy()
+            Toast(root, "备注已保存", "success")
+            root.after(800, root.destroy)
         except Exception:
             logger.exception("保存失败")
-            from tkinter import messagebox
-            messagebox.showerror("错误", "保存失败")
-
-    ctk.CTkButton(btn_frame, text="保存", font=("Microsoft YaHei UI", 13),
-                   fg_color="#10B981", hover_color="#059669",
-                   command=save).pack(side="right", padx=4)
-    ctk.CTkButton(btn_frame, text="取消", font=("Microsoft YaHei UI", 13),
-                   fg_color="gray", command=root.destroy).pack(side="right", padx=4)
+            Toast(root, "保存失败", "error")
 
     def open_manager():
         root.destroy()
         launch_gui(target_path=target_path)
 
-    ctk.CTkButton(btn_frame, text="打开管理器", font=("Microsoft YaHei UI", 12),
-                   command=open_manager).pack(side="left", padx=4)
+    ctk.CTkButton(btn_inner, text="📂 打开管理器", font=FONT_NORMAL, height=36, width=130,
+                   fg_color="gray60", hover_color="gray50", corner_radius=8,
+                   command=open_manager).pack(side="left")
+
+    ctk.CTkButton(btn_inner, text="取消", font=FONT_NORMAL, height=36, width=80,
+                   fg_color="gray60", hover_color="gray50", corner_radius=8,
+                   command=root.destroy).pack(side="right", padx=(8, 0))
+    ctk.CTkButton(btn_inner, text="💾 保存", font=FONT_NORMAL, height=36, width=100,
+                   fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER, corner_radius=8,
+                   command=save).pack(side="right")
+
+    # 快捷键
+    root.bind("<Control-s>", lambda e: save())
+    root.bind("<Escape>", lambda e: root.destroy())
 
     root.mainloop()
 
