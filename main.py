@@ -72,7 +72,7 @@ def _do_quick_edit(target_path: str):
     FONT_TITLE = ("Microsoft YaHei UI", 18, "bold")
     FONT_NORMAL = ("Microsoft YaHei UI", 13)
     FONT_SMALL = ("Microsoft YaHei UI", 11)
-    FONT_MONO = ("Cascadia Mono", 12)
+    FONT_MONO = ("Consolas", 13)
     FONT_ICON = ("Segoe UI Emoji", 16)
 
     # 查询现有备注
