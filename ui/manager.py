@@ -253,6 +253,45 @@ SORT_OPTIONS = [
 ]
 
 
+# ============================================================
+# 可拖动分隔条
+# ============================================================
+class DraggableSeparator(ctk.CTkFrame):
+    """可拖动的垂直分隔条，用于调整左右面板宽度"""
+    def __init__(self, master, left_widget, right_widget, min_left=200, min_right=300):
+        super().__init__(master, width=6, cursor="sb_h_double_arrow", fg_color=COLOR_BORDER)
+        self._left = left_widget
+        self._right = right_widget
+        self._min_left = min_left
+        self._min_right = min_right
+        self._dragging = False
+
+        self.bind("<Button-1>", self._on_press)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.bind("<Enter>", lambda e: self.configure(fg_color=COLOR_PRIMARY))
+        self.bind("<Leave>", lambda e: self.configure(fg_color=COLOR_BORDER))
+
+    def _on_press(self, event):
+        self._dragging = True
+        self._start_x = event.x_root
+        self._left_width = self._left.winfo_width()
+
+    def _on_drag(self, event):
+        if not self._dragging:
+            return
+        dx = event.x_root - self._start_x
+        new_left = self._left_width + dx
+        parent_width = self.master.winfo_width()
+        right_width = parent_width - new_left - 6
+
+        if new_left >= self._min_left and right_width >= self._min_right:
+            self._left.configure(width=new_left)
+
+    def _on_release(self, event):
+        self._dragging = False
+
+
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, on_nav_change):
         super().__init__(master, width=260, corner_radius=0, fg_color=COLOR_BG_SIDEBAR)
@@ -366,42 +405,33 @@ class NoteCard(ctk.CTkFrame):
         file_type = get_file_type(item["path"])
         icon = get_file_type_icon(item["path"])
 
-        # 顶部行：图标 + 文件名
+        # 单行：图标 + 文件名 + 类型标签 + 状态
         top = ctk.CTkFrame(self, fg_color="transparent")
-        top.pack(fill="x", padx=12, pady=(10, 2))
+        top.pack(fill="x", padx=12, pady=(8, 2))
 
-        # 图标（固定宽度，用 anchor="center" 居中）
-        icon_label = ctk.CTkLabel(top, text=icon, font=FONT_ICON, width=28, anchor="center")
+        icon_label = ctk.CTkLabel(top, text=icon, font=("Segoe UI Emoji", 15), width=24, anchor="center")
         icon_label.pack(side="left")
 
-        # 文件名
         name = os.path.basename(item["path"]) or item["path"]
-        name_label = ctk.CTkLabel(top, text=name, font=FONT_SUBTITLE, anchor="w",
-                                   text_color=COLOR_TEXT_PRIMARY, wraplength=200)
-        name_label.pack(side="left", padx=(8, 0), fill="x", expand=True)
+        name_label = ctk.CTkLabel(top, text=name, font=("Microsoft YaHei UI", 13, "bold"), anchor="w",
+                                   text_color=COLOR_TEXT_PRIMARY, wraplength=180)
+        name_label.pack(side="left", padx=(6, 0), fill="x", expand=True)
 
-        # 右侧状态
-        right_frame = ctk.CTkFrame(top, fg_color="transparent")
-        right_frame.pack(side="right")
-
+        # 右侧：类型标签 + 状态
         if item["pinned"]:
-            ctk.CTkLabel(right_frame, text="📌", font=("Segoe UI Emoji", 12), width=20).pack(side="right", padx=1)
+            ctk.CTkLabel(top, text="📌", font=("Segoe UI Emoji", 11), width=18).pack(side="right", padx=1)
         if item["favorite"]:
-            ctk.CTkLabel(right_frame, text="⭐", font=("Segoe UI Emoji", 12), width=20).pack(side="right", padx=1)
+            ctk.CTkLabel(top, text="⭐", font=("Segoe UI Emoji", 11), width=18).pack(side="right", padx=1)
 
-        # 文件类型标签（放在名字下方）
-        type_frame = ctk.CTkFrame(self, fg_color="transparent")
-        type_frame.pack(fill="x", padx=12, pady=(0, 4))
-
-        type_badge = ctk.CTkLabel(type_frame, text=file_type, font=("Microsoft YaHei UI", 10),
+        type_badge = ctk.CTkLabel(top, text=file_type, font=("Microsoft YaHei UI", 9),
                                    text_color="white", fg_color=COLOR_PRIMARY,
-                                   corner_radius=4, width=60, height=20)
-        type_badge.pack(side="left", padx=(36, 0))
+                                   corner_radius=3, width=48, height=18)
+        type_badge.pack(side="right", padx=(0, 4))
 
         # 路径
         path_label = ctk.CTkLabel(self, text=item["path"], font=FONT_SMALL, text_color=COLOR_INFO,
-                                   anchor="w", wraplength=300, cursor="hand2")
-        path_label.pack(fill="x", padx=12, pady=(0, 4))
+                                   anchor="w", wraplength=320, cursor="hand2")
+        path_label.pack(fill="x", padx=12, pady=(0, 2))
         path_label.bind("<Button-1>", lambda e: self._open_path(item["path"]))
 
         # 预览
@@ -410,12 +440,12 @@ class NoteCard(ctk.CTkFrame):
             preview += "..."
         if preview:
             ctk.CTkLabel(self, text=preview, font=FONT_SMALL, text_color=COLOR_TEXT_SECONDARY,
-                          anchor="w", wraplength=300, justify="left").pack(fill="x", padx=12, pady=(0, 4))
+                          anchor="w", wraplength=320, justify="left").pack(fill="x", padx=12, pady=(0, 2))
 
         # 时间
         time_text = f"📁 {file_meta['file_modified']}  📝 {item['updated_at'][:16]}"
-        ctk.CTkLabel(self, text=time_text, font=("Microsoft YaHei UI", 10),
-                      text_color=COLOR_TEXT_MUTED, anchor="e").pack(fill="x", padx=12, pady=(0, 8))
+        ctk.CTkLabel(self, text=time_text, font=("Microsoft YaHei UI", 9),
+                      text_color=COLOR_TEXT_MUTED, anchor="e").pack(fill="x", padx=12, pady=(0, 6))
 
     def _open_path(self, path: str):
         if os.path.exists(path):
@@ -484,13 +514,13 @@ class NoteList(ctk.CTkFrame):
         sort_frame = ctk.CTkFrame(self, fg_color="transparent")
         sort_frame.pack(fill="x", padx=12, pady=(0, 8))
 
-        ctk.CTkLabel(sort_frame, text="排序:", font=FONT_SMALL, text_color=COLOR_TEXT_MUTED).pack(side="left")
+        ctk.CTkLabel(sort_frame, text="排序:", font=("Microsoft YaHei UI", 10), text_color=COLOR_TEXT_MUTED).pack(side="left")
 
         self._sort_var = ctk.StringVar(value="备注更新时间")
         sort_menu = ctk.CTkOptionMenu(
             sort_frame, variable=self._sort_var, values=[s[0] for s in SORT_OPTIONS],
-            font=FONT_SMALL, width=130, height=28, corner_radius=6,
-            fg_color=COLOR_PRIMARY, button_color=COLOR_PRIMARY_HOVER,
+            font=("Microsoft YaHei UI", 10), width=120, height=26, corner_radius=6,
+            fg_color="gray70", button_color="gray50", button_hover_color="gray40",
             command=self._on_sort_select
         )
         sort_menu.pack(side="left", padx=(4, 0))
@@ -836,14 +866,25 @@ class ManagerWindow(ctk.CTk):
         self.after(100, self._load_data)
 
     def _build_layout(self):
+        # 左侧导航
         self._sidebar = Sidebar(self, on_nav_change=self._on_nav_change)
         self._sidebar.pack(side="left", fill="y")
 
-        self._note_list = NoteList(self, on_select=self._on_select, on_search=self._on_search, on_sort_change=self._on_sort_change)
-        self._note_list.pack(side="left", fill="both", padx=(2, 0))
+        # 分隔条1：侧边栏 <-> 列表
+        sep1 = DraggableSeparator(self, self._sidebar, None, min_left=200, min_right=300)
+        sep1.pack(side="left", fill="y")
 
+        # 中间列表
+        self._note_list = NoteList(self, on_select=self._on_select, on_search=self._on_search, on_sort_change=self._on_sort_change)
+        self._note_list.pack(side="left", fill="both")
+
+        # 分隔条2：列表 <-> 详情
+        sep2 = DraggableSeparator(self, self._note_list, None, min_left=300, min_right=400)
+        sep2.pack(side="left", fill="y")
+
+        # 右侧详情
         self._detail = DetailPanel(self, on_refresh_list=self._load_data)
-        self._detail.pack(side="right", fill="both", expand=True, padx=(0, 2))
+        self._detail.pack(side="right", fill="both", expand=True)
         self._detail.show_empty()
 
     def _bind_shortcuts(self):
