@@ -20,12 +20,22 @@
 1. 克隆或下载此项目
 2. 安装依赖：
    ```bash
-   pip install customtkinter pystray pillow markdown tkinterweb loguru
+   pip install -r requirements.txt
    ```
 3. 运行 `install.bat` 或手动注册右键菜单：
    ```bash
    python main.py --register
    ```
+
+## 打包构建
+
+使用 PyInstaller 打包为独立可执行文件：
+
+```bash
+build.bat
+```
+
+打包产物位于 `dist/FileNote/`，运行 `install.bat` 可自动注册右键菜单并创建桌面快捷方式。
 
 ## 使用方法
 
@@ -66,11 +76,18 @@ fileNote/
 ├── registry/
 │   └── context_menu.py     # 右键菜单注册
 ├── utils/                  # 工具函数（预留）
+├── build.bat               # PyInstaller 打包脚本
 ├── install.bat             # 安装脚本
+├── filenote.spec            # PyInstaller 配置
 ├── requirements.txt        # 依赖列表
+├── AGENTS.md               # 贡献者指南
 └── README.md               # 说明文档
 ```
 
 ## 许可证
 
 MIT License
+
+## 贡献指南
+
+欢迎提交 Issue 和 Pull Request。详细的开发规范请参阅 [AGENTS.md](AGENTS.md)。
